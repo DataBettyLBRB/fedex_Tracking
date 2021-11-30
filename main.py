@@ -1,9 +1,13 @@
+import argparse
+
 import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 
 from pywebio.output import put_file
+from pywebio import start_server
 from flask import Flask
+
 from tracking_numbers import get_tracking
 
 import time
@@ -32,8 +36,7 @@ def fedex_search(number):
 
     return tracking
 
-
-if __name__ == "__main__":
+def main():
     tracking_locations = []
 
     track, ncrt, ec_coco = get_tracking()
@@ -72,3 +75,11 @@ if __name__ == "__main__":
 
     data = open(writer, 'rb').read()
     put_file('FedEx Address Validation.xlsx', data, 'download')
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-p", "--port", type=int, default=8080)
+    args = parser.parse_args()
+
+    start_server(main, )
