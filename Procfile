@@ -1,1 +1,1 @@
-web: python main.py --ports=$PORT
+web: python main.py --port=$PORT

@@ -4,14 +4,19 @@ import pandas as pd
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 
-from pywebio.output import put_file
+from pywebio.platform.flask import webio_view
+from pywebio.output import *
 from pywebio import start_server
 from flask import Flask
+
+import argparse
 
 from tracking_numbers import get_tracking
 
 import time
-import re
+
+pd.set_option('display.max_columns', None)
+pd.set_option('display.max_rows', None)
 
 app = Flask(__name__)
 
@@ -25,56 +30,82 @@ def fedex_search(number):
     search_bar.click()
     search_bar.send_keys(number)
 
-    submit_btn = driver.find_element(By.CLASS_NAME, "fSXkBc")
-    submit_btn.click()
+    try:
+        submit_btn = driver.find_element(By.CLASS_NAME, "fSXkBc")
+        submit_btn.click()
 
-    time.sleep(5)
+        time.sleep(5)
+        tracking = driver.find_element(By.XPATH,
+                                       "/html/body/app-root/div/div[2]/div/div/ng-component/trk-shared-stylesheet-wrapper"
+                                       "/div/div/trk-shared-detail-page/trk-shared-stylesheet-wrapper/div/div/trk-shared-"
+                                       "detail-page-default/div/div/section[1]/div[5]/trk-shared-to-from/div/div[2]/trk-"
+                                       "shared-address/div/div[2]").text
 
-    tracking = {'BOL/Tracking #': number, 'Shipped Location': driver.find_element(By.XPATH,
-                                                                     "/html/body/app-root/div/div[2]/div/div/ng-component/trk-shared-stylesheet-wrapper/div/div/trk-shared-detail-page/trk-shared-stylesheet-wrapper/div/div/trk-shared-detail-page-default/div/div/section[1]/div[5]/trk-shared-to-from/div/div[2]/trk-shared-address/div/div[2]").text}
+    except:
+        tracking = 'ERROR'
+
     driver.close()
 
     return tracking
 
+
 def main():
-    tracking_locations = []
+    df = get_tracking()[0:1]
 
-    track, ncrt, ec_coco = get_tracking()
+    df['BOL/Tracking #'] = df['BOL/Tracking #'].str.extract(r'(\d+)')
+    null_df = df[df.SHIP_ADDRESS.isnull()]
+    df = df[df.SHIP_ADDRESS.notnull()]
 
-    for num in track[0:5]:
-        print(num)
-        try:
-            tracking_locations.append(fedex_search(num))
-        except:
-            pass
+    put_html('<h3>Fedex Tracking</h3>')
 
-    tracking_nums = pd.DataFrame(tracking_locations)
-    new1 = tracking_nums['Shipped Location'].str.split(",", expand=True)
-    new2 = tracking_nums['Shipped Location'].str.split(" ", expand=True)
+    match, fedex_city = [], []
+    for idx, row in df.iterrows():
+        put_row([put_text(idx), put_text(row['BOL/Tracking #'])])
 
-    tracking_nums['SHIPPING_CITY'] = new1[0]
-    tracking_nums['SHIPPING_STATE'] = new2[1]
+        city = fedex_search(row['BOL/Tracking #']).split(',')[0]
+        df['Fedex_City'] = city
 
-    tracking_final = pd.merge(tracking_nums, ec_coco, on='BOL/Tracking #')
-    results = pd.merge(tracking_final, ncrt, left_on='Request ID Number', right_on='REQUEST_ITEM_ID')
-    results['MATCH'] = ""
+        address = row['SHIP_ADDRESS']
 
-    for rows in results:
-        city = results['SHIPPING_CITY'][0]
-        addy = results['SHIP_ADDRESS'][0]
+        if city.lower() in address.lower():
+            Match = 'TRUE'
+            match.append(Match)
 
-    if re.search(city, addy, re.IGNORECASE):
-        results['MATCH'] = 'TRUE'
-    else:
-        results['MATCH'] = 'FALSE'
+        elif city.lower() not in address.lower():
+            if '-' in city:
+                city = city.replace('-', ' ')
+            elif len(city.split(' ', 1)) > 1:
+                city = city.split(' ', 1)[1]
+            else:
+                city = city
 
-    with pd.ExcelWriter('FedEx Address Validation.xlsx') as writer:
-        results.to_excel(writer, index=False)
+            if city.lower() in address.lower():
+                Match = 'TRUE'
+                match.append(Match)
+            else:
+                Match = 'FALSE'
+                match.append(Match)
 
-    results.to_excel('Fedex_Address_Validation.xlsx', index=False)
+        fedex_city.append(city)
 
-    data = open(writer, 'rb').read()
-    put_file('FedEx Address Validation.xlsx', data, 'download')
+        put_row([put_text(address), None, put_text(city), None, put_text(Match)], size='60% 10px 25% 10px 15%')
+        put_row([None, put_text('_____________________________________________________________________________')],
+                size='270px 100%')
+
+    df['Match'] = match
+    df['Fedex_City'] = fedex_city
+
+    put_text('WRITING DATA TO FILE FOR DOWNLOAD')
+
+    with pd.ExcelWriter('Fedex_Address_Validation.xlsx', engine='openpyxl') as writer:
+        df.to_excel(writer, index=False)
+
+    results = open(writer, 'rb').read()
+    put_file('Fedex_Address_Validation.xlsx', results, 'download')
+
+    put_text('PROCESS COMPLETE')
+
+    app.add_url_rule('/', 'webio_view', webio_view(main), methods=['GET', 'POST', 'OPTIONS'])
 
 
 if __name__ == "__main__":
@@ -82,4 +113,4 @@ if __name__ == "__main__":
     parser.add_argument("-p", "--port", type=int, default=8080)
     args = parser.parse_args()
 
-    start_server(main, )
+    start_server(main, port=args.port, auto_open_webbrowser=True)
