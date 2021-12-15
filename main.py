@@ -22,7 +22,15 @@ app = Flask(__name__)
 
 
 def fedex_search(number):
-    driver = webdriver.Chrome()
+    GOOGLE_CHROME_PATH = '/app/.apt/usr/bin/google_chrome'
+    CHROMEDRIVER_PATH = '/app/.chromedriver/bin/chromedriver'
+
+    chrome_options = webdriver.ChromeOptions()
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.binary_location = GOOGLE_CHROME_PATH
+
+    driver = webdriver.Chrome(execution_path=CHROMEDRIVER_PATH, chrome_options=chrome_options)
     driver.get(
         'https://www.google.com/search?q=fedex+tracking&rlz=1C1CHBF_enUS980US980&oq=fed&aqs=chrome.0.69i59j46i199i291i433i512j69i57j0i433i512j69i60l4.1096j0j7&sourceid=chrome&ie=UTF-8')
 
