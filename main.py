@@ -50,7 +50,7 @@ def fedex_search(number):
 
 
 def main():
-    df = get_tracking()[0:1]
+    df = get_tracking()
 
     df['BOL/Tracking #'] = df['BOL/Tracking #'].str.extract(r'(\d+)')
     null_df = df[df.SHIP_ADDRESS.isnull()]
